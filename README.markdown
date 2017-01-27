@@ -51,24 +51,24 @@ Description
 
 This Lua library is a Redis client driver for the ngx_lua nginx module:
 
-http://wiki.nginx.org/HttpLuaModule
+https://github.com/openresty/lua-nginx-module/#readme
 
 This Lua library takes advantage of ngx_lua's cosocket API, which ensures
 100% nonblocking behavior.
 
-Note that at least [ngx_lua 0.5.14](https://github.com/chaoslawful/lua-nginx-module/tags) or [ngx_openresty 1.2.1.14](http://openresty.org/#Download) is required.
+Note that at least [ngx_lua 0.5.14](https://github.com/chaoslawful/lua-nginx-module/tags) or [OpenResty 1.2.1.14](http://openresty.org/#Download) is required.
 
 Synopsis
 ========
 
 ```lua
     # you do not need the following line if you are using
-    # the ngx_openresty bundle:
+    # the OpenResty bundle:
     lua_package_path "/path/to/lua-resty-redis/lib/?.lua;;";
 
     server {
         location /test {
-            content_by_lua '
+            content_by_lua_block {
                 local redis = require "resty.redis"
                 local red = redis:new()
 
@@ -118,7 +118,7 @@ Synopsis
 
                 for i, res in ipairs(results) do
                     if type(res) == "table" then
-                        if not res[1] then
+                        if res[1] == false then
                             ngx.say("failed to run command ", i, ": ", res[2])
                         else
                             -- process the table value
@@ -142,7 +142,7 @@ Synopsis
                 --     ngx.say("failed to close: ", err)
                 --     return
                 -- end
-            ';
+            }
         }
     }
 ```
@@ -250,7 +250,7 @@ You can specify the max idle timeout (in ms) when the connection is in the pool 
 
 In case of success, returns `1`. In case of errors, returns `nil` with a string describing the error.
 
-Only call this method in the place you would have called the `close` method instead. Calling this method will immediately turn the current redis object into the `closed` state. Any subsequent operations other than `connect()` on the current objet will return the `closed` error.
+Only call this method in the place you would have called the `close` method instead. Calling this method will immediately turn the current redis object into the `closed` state. Any subsequent operations other than `connect()` on the current object will return the `closed` error.
 
 [Back to TOC](#table-of-contents)
 
@@ -405,6 +405,9 @@ add_commands
 ------------
 `syntax: hash = redis.add_commands(cmd_name1, cmd_name2, ...)`
 
+*WARNING* this method is now deprecated since we already do automatic Lua method generation
+for any redis commands the user attempts to use and thus we no longer need this.
+
 Adds new redis commands to the `resty.redis` class. Here is an example:
 
 ```lua
@@ -531,7 +534,7 @@ Then the output will be
 Load Balancing and Failover
 ===========================
 
-You can trivially implement your own Redis load balancing logic yourself in Lua. Just keep a Lua table of all available Redis backend information (like host name and port numbers) and pick one server according to some rule (like round-robin or key-based hashing) from the Lua table at every request. You can keep track of the current rule state in your own Lua module's data, see http://wiki.nginx.org/HttpLuaModule#Data_Sharing_within_an_Nginx_Worker
+You can trivially implement your own Redis load balancing logic yourself in Lua. Just keep a Lua table of all available Redis backend information (like host name and port numbers) and pick one server according to some rule (like round-robin or key-based hashing) from the Lua table at every request. You can keep track of the current rule state in your own Lua module's data, see https://github.com/openresty/lua-nginx-module/#data-sharing-within-an-nginx-worker
 
 Similarly, you can implement automatic failover logic in Lua at great flexibility.
 
@@ -556,9 +559,9 @@ It is usually convenient to use the [lua-cjson](http://www.kyne.com.au/~mark/sof
 Automatic Error Logging
 =======================
 
-By default the underlying [ngx_lua](http://wiki.nginx.org/HttpLuaModule) module
+By default the underlying [ngx_lua](https://github.com/openresty/lua-nginx-module/#readme) module
 does error logging when socket errors happen. If you are already doing proper error
-handling in your own Lua code, then you are recommended to disable this automatic error logging by turning off [ngx_lua](http://wiki.nginx.org/HttpLuaModule)'s [lua_socket_log_errors](http://wiki.nginx.org/HttpLuaModule#lua_socket_log_errors) directive, that is,
+handling in your own Lua code, then you are recommended to disable this automatic error logging by turning off [ngx_lua](https://github.com/openresty/lua-nginx-module/#readme)'s [lua_socket_log_errors](https://github.com/openresty/lua-nginx-module/#lua_socket_log_errors) directive, that is,
 
 ```nginx
     lua_socket_log_errors off;
@@ -586,7 +589,7 @@ header_filter_by_lua* where the ngx_lua cosocket API is not available.
 * The `resty.redis` object instance cannot be stored in a Lua variable at the Lua module level,
 because it will then be shared by all the concurrent requests handled by the same nginx
  worker process (see
-http://wiki.nginx.org/HttpLuaModule#Data_Sharing_within_an_Nginx_Worker ) and
+https://github.com/openresty/lua-nginx-module/#data-sharing-within-an-nginx-worker ) and
 result in bad race conditions when concurrent requests are trying to use the same `resty.redis` instance
 (you would see the "bad request" or "socket busy" error to be returned from the method calls).
 You should always initiate `resty.redis` objects in function local
@@ -598,7 +601,7 @@ each request.
 Installation
 ============
 
-If you are using the ngx_openresty bundle (http://openresty.org ), then
+If you are using the OpenResty bundle (http://openresty.org ), then
 you do not need to do anything because it already includes and enables
 lua-resty-redis by default. And you can just use it in your Lua code,
 as in
@@ -662,7 +665,7 @@ Please report bugs or submit patches by
 Author
 ======
 
-Yichun "agentzh" Zhang (章亦春) <agentzh@gmail.com>, CloudFlare Inc.
+Yichun "agentzh" Zhang (章亦春) <agentzh@gmail.com>, OpenResty Inc.
 
 [Back to TOC](#table-of-contents)
 
@@ -671,7 +674,7 @@ Copyright and License
 
 This module is licensed under the BSD license.
 
-Copyright (C) 2012-2014, by Yichun Zhang (agentzh) <agentzh@gmail.com>, CloudFlare Inc.
+Copyright (C) 2012-2017, by Yichun Zhang (agentzh) <agentzh@gmail.com>, OpenResty Inc.
 
 All rights reserved.
 
@@ -687,7 +690,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 See Also
 ========
-* the ngx_lua module: http://wiki.nginx.org/HttpLuaModule
+* the ngx_lua module: https://github.com/openresty/lua-nginx-module/#readme
 * the redis wired protocol specification: http://redis.io/topics/protocol
 * the [lua-resty-memcached](https://github.com/agentzh/lua-resty-memcached) library
 * the [lua-resty-mysql](https://github.com/agentzh/lua-resty-mysql) library
