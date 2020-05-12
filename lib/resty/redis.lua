@@ -3,6 +3,8 @@
 
 local sub = string.sub
 local byte = string.byte
+local tab_insert = table.insert
+local tab_remove = table.remove
 local tcp = ngx.socket.tcp
 local null = ngx.null
 local type = type
@@ -12,6 +14,7 @@ local setmetatable = setmetatable
 local tonumber = tonumber
 local tostring = tostring
 local rawget = rawget
+local select = select
 --local error = error
 
 
@@ -21,9 +24,9 @@ if not ok or type(new_tab) ~= "function" then
 end
 
 
-local _M = new_tab(0, 54)
+local _M = new_tab(0, 55)
 
-_M._VERSION = '0.26'
+_M._VERSION = '0.28'
 
 
 local common_cmds = {
@@ -67,22 +70,95 @@ end
 function _M.set_timeout(self, timeout)
     local sock = rawget(self, "_sock")
     if not sock then
-        return nil, "not initialized"
+        error("not initialized", 2)
+        return
     end
 
-    return sock:settimeout(timeout)
+    sock:settimeout(timeout)
 end
 
 
-function _M.connect(self, ...)
+function _M.set_timeouts(self, connect_timeout, send_timeout, read_timeout)
+    local sock = rawget(self, "_sock")
+    if not sock then
+        error("not initialized", 2)
+        return
+    end
+
+    sock:settimeouts(connect_timeout, send_timeout, read_timeout)
+end
+
+
+function _M.connect(self, host, port_or_opts, opts)
     local sock = rawget(self, "_sock")
     if not sock then
         return nil, "not initialized"
     end
 
+    local unix
+
+    do
+        local typ = type(host)
+        if typ ~= "string" then
+            error("bad argument #1 host: string expected, got " .. typ, 2)
+        end
+
+        if sub(host, 1, 5) == "unix:" then
+            unix = true
+        end
+
+        if unix then
+            typ = type(port_or_opts)
+            if port_or_opts ~= nil and typ ~= "table" then
+                error("bad argument #2 opts: nil or table expected, got " ..
+                      typ, 2)
+            end
+
+        else
+            typ = type(port_or_opts)
+            if typ ~= "number" then
+                port_or_opts = tonumber(port_or_opts)
+                if port_or_opts == nil then
+                    error("bad argument #2 port: number expected, got " ..
+                          typ, 2)
+                end
+            end
+
+            if opts ~= nil then
+                typ = type(opts)
+                if typ ~= "table" then
+                    error("bad argument #3 opts: nil or table expected, got " ..
+                          typ, 2)
+                end
+            end
+        end
+
+    end
+
     self._subscribed = false
 
-    return sock:connect(...)
+    local ok, err
+
+    if unix then
+        ok, err = sock:connect(host, port_or_opts)
+        opts = port_or_opts
+
+    else
+        ok, err = sock:connect(host, port_or_opts, opts)
+    end
+
+    if not ok then
+        return ok, err
+    end
+
+    if opts and opts.ssl then
+        ok, err = sock:sslhandshake(false, opts.server_name, opts.ssl_verify)
+        if not ok then
+            return ok, "failed to do ssl handshake: " .. err
+        end
+    end
+
+    return ok, err
 end
 
 
@@ -199,7 +275,7 @@ local function _read_reply(self, sock)
 
     else
         -- when `line` is an empty string, `prefix` will be equal to nil.
-        return nil, "unkown prefix: \"" .. tostring(prefix) .. "\""
+        return nil, "unknown prefix: \"" .. tostring(prefix) .. "\""
     end
 end
 
@@ -232,6 +308,12 @@ local function _gen_req(args)
 end
 
 
+local function _check_msg(self, res)
+    return rawget(self, "_subscribed") and
+        type(res) == "table" and res[1] == "message"
+end
+
+
 local function _do_cmd(self, ...)
     local args = {...}
 
@@ -255,7 +337,17 @@ local function _do_cmd(self, ...)
         return nil, err
     end
 
-    return _read_reply(self, sock)
+    local res, err = _read_reply(self, sock)
+    while _check_msg(self, res) do
+        if rawget(self, "_buffered_msg") == nil then
+            self._buffered_msg = new_tab(1, 0)
+        end
+
+        tab_insert(self._buffered_msg, res)
+        res, err = _read_reply(self, sock)
+    end
+
+    return res, err
 end
 
 
@@ -265,6 +357,8 @@ local function _check_subscribed(self, res)
        and res[3] == 0
    then
         self._subscribed = false
+        -- FIXME: support multiple subscriptions in the next PR
+        self._buffered_msg = nil
     end
 end
 
@@ -277,6 +371,18 @@ function _M.read_reply(self)
 
     if not rawget(self, "_subscribed") then
         return nil, "not subscribed"
+    end
+
+    local buffered_msg = rawget(self, "_buffered_msg")
+    if buffered_msg then
+        local msg = buffered_msg[1]
+        tab_remove(buffered_msg, 1)
+
+        if #buffered_msg == 0 then
+            self._buffered_msg = nil
+        end
+
+        return msg
     end
 
     local res, err = _read_reply(self, sock)
