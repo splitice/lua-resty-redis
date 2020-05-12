@@ -34,22 +34,20 @@ __DATA__
 
             redis.add_commands("foo", "bar")
 
-            local red = redis:new()
-
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            local res, err = red:foo("a")
+            red:settimeout(1000) -- 1 sec
+
+            local res, err = redis.foo(red, "a")
             if not res then
                 ngx.say("failed to foo: ", err)
             end
 
-            res, err = red:bar()
+            res, err = redis.bar(red)
             if not res then
                 ngx.say("failed to bar: ", err)
             end

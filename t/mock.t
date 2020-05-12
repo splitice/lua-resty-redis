@@ -30,18 +30,17 @@ __DATA__
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            local ok, err = red:connect("127.0.0.1", 1921);
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", 1921);
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            red:set_timeout(100) -- 0.1 sec
+            red:settimeout(100) -- 0.1 sec
 
             for i = 1, 2 do
-                local data, err = red:get("foo")
+                local data, err = redis.get(red, "foo")
                 if not data then
                     ngx.say("failed to get: ", err)
                 else
