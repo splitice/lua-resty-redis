@@ -26,7 +26,7 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: github issue #108: ngx.location.capture + redis.set_keepalive
+=== TEST 1: github issue #108: ngx.location.capture + redis.setkeepalive
 --- http_config eval: $::HttpConfig
 --- config
     location /r1 {
@@ -56,18 +56,17 @@ __DATA__
 --- user_files
 >>> r1.lua
 local redis = require "resty.redis"
-local red = redis:new()
-local ok, err = red:connect("127.0.0.1", ngx.var.port)
-if not ok then
+local red, err = redis.connect("127.0.0.1", ngx.var.port)
+if not red then
     ngx.say("failed to connect: ", err)
     return
 end
-local ok, err = red:flushall()
+local ok, err = redis.flushall(red)
 if not ok then
     ngx.say("failed to flushall: ", err)
     return
 end
-ok, err = red:set_keepalive()
+ok, err = red:setkeepalive()
 if not ok then
     ngx.say("failed to set keepalive: ", err)
     return
@@ -77,9 +76,8 @@ ngx.say("ok")
 
 >>> r2.lua
 local redis = require "resty.redis"
-local red = redis:new()
-local ok, err = red:connect("127.0.0.1", ngx.var.port) --2
-if not ok then
+local red, err = redis.connect("127.0.0.1", ngx.var.port) --2
+if not red then
     ngx.say("failed to connect: ", err)
     return
 end
@@ -102,23 +100,15 @@ https://github.com/chaoslawful/lua-nginx-module/issues/110
     location /foo {
         access_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
-
-            red:set_timeout(2000) -- 2 sec
-
-            -- ngx.log(ngx.ERR, "hello");
-
-            -- or connect to a unix domain socket file listened
-            -- by a redis server:
-            --     local ok, err = red:connect("unix:/path/to/redis.sock")
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.log(ngx.ERR, "failed to connect: ", err)
                 return
             end
 
-            res, err = red:set("dog", "an animal")
+            red:settimeout(2000) -- 2 sec
+
+            res, err = redis.set(red, "dog", "an animal")
             if not res then
                 ngx.log(ngx.ERR, "failed to set dog: ", err)
                 return
@@ -126,7 +116,7 @@ https://github.com/chaoslawful/lua-nginx-module/issues/110
 
             -- ngx.say("set dog: ", res)
 
-            local res, err = red:get("dog")
+            local res, err = redis.get(red, "dog")
             if err then
                 ngx.log(ngx.ERR, "failed to get dog: ", err)
                 return
@@ -140,7 +130,7 @@ https://github.com/chaoslawful/lua-nginx-module/issues/110
             -- ngx.say("dog: ", res)
 
             -- red:close()
-            local ok, err = red:set_keepalive(0, 100)
+            local ok, err = red:setkeepalive(0, 100)
             if not ok then
                 ngx.log(ngx.ERR, "failed to set keepalive: ", err)
                 return
@@ -171,21 +161,14 @@ Not found, dear...
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
-
-            red:set_timeout(1000) -- 1 sec
-
-            -- or connect to a unix domain socket file listened
-            -- by a redis server:
-            --     local ok, err = red:connect("unix:/path/to/redis.sock")
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
+            red:settimeout(1000) -- 1 sec
 
-            res, err = red:set("dog", "")
+            res, err = redis.set(red, "dog", "")
             if not res then
                 ngx.say("failed to set dog: ", err)
                 return
@@ -194,7 +177,7 @@ Not found, dear...
             ngx.say("set dog: ", res)
 
             for i = 1, 2 do
-                local res, err = red:get("dog")
+                local res, err = redis.get(red, "dog")
                 if err then
                     ngx.say("failed to get dog: ", err)
                     return
@@ -228,17 +211,16 @@ dog:
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            local res, err = red:get("dog")
+            red:settimeout(1000) -- 1 sec
+
+            local res, err = redis.get(red, "dog")
             if err then
                 ngx.say("failed to get dog: ", err)
                 return

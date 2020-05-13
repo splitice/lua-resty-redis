@@ -30,25 +30,24 @@ __DATA__
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
+            red:settimeout(1000) -- 1 sec
+
             for i = 1, 2 do
-                red:init_pipeline()
+                local pipeline = redis.init_pipeline(red)
 
-                red:set("dog", "an animal")
-                red:get("dog")
-                red:set("dog", "hello")
-                red:get("dog")
+                pipeline:set("dog", "an animal")
+                pipeline:get("dog")
+                pipeline:set("dog", "hello")
+                pipeline:get("dog")
 
-                local results = red:commit_pipeline()
+                local results = pipeline:commit_pipeline()
                 local cjson = require "cjson"
                 ngx.say(cjson.encode(results))
             end
@@ -72,30 +71,28 @@ GET /t
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            red:init_pipeline()
+            red:settimeout(1000) -- 1 sec
+            local pipeline = redis.init_pipeline(red)
 
-            red:set("dog", "an animal")
-            red:get("dog")
+            pipeline:set("dog", "an animal")
+            pipeline:get("dog")
 
             for i = 1, 2 do
-                red:init_pipeline()
+                pipeline = redis.init_pipeline(red)
 
-                red:set("dog", "an animal")
-                red:get("dog")
-                red:set("dog", "hello")
-                red:get("dog")
+                pipeline:set("dog", "an animal")
+                pipeline:get("dog")
+                pipeline:set("dog", "hello")
+                pipeline:get("dog")
 
-                local results = red:commit_pipeline()
+                local results, err = pipeline:commit_pipeline()
                 local cjson = require "cjson"
                 ngx.say(cjson.encode(results))
             end
@@ -119,24 +116,23 @@ GET /t
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            red:init_pipeline()
+            red:settimeout(1000) -- 1 sec
 
-            red:set("dog", "an animal")
-            red:get("dog")
+            local pipeline = redis.init_pipeline(red)
 
-            red:cancel_pipeline()
+            pipeline:set("dog", "an animal")
+            pipeline:get("dog")
 
-            local res, err = red:flushall()
+            pipeline:cancel_pipeline()
+
+            local res, err = redis.flushall(red)
             if not res then
                 ngx.say("failed to flush all: ", err)
                 return
@@ -145,14 +141,14 @@ GET /t
             ngx.say("flushall: ", res)
 
             for i = 1, 2 do
-                red:init_pipeline()
+                pipeline = redis.init_pipeline(red)
 
-                red:set("dog", "an animal")
-                red:get("dog")
-                red:set("dog", "hello")
-                red:get("dog")
+                pipeline:set("dog", "an animal")
+                pipeline:get("dog")
+                pipeline:set("dog", "hello")
+                pipeline:get("dog")
 
-                local results = red:commit_pipeline()
+                local results = pipeline:commit_pipeline()
                 local cjson = require "cjson"
                 ngx.say(cjson.encode(results))
             end
@@ -177,25 +173,24 @@ flushall: OK
     location /test {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", 6379)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            res, err = red:set("dog", "an aniaml")
+            red:settimeout(1000) -- 1 sec
+
+            local ok, err = redis.set(red, "dog", "an aniaml")
             if not ok then
                 ngx.say("failed to set dog: ", err)
                 return
             end
 
-            ngx.say("set result: ", res)
+            ngx.say("set result: ", ok)
 
-            local res, err = red:get("dog")
+            local res, err = redis.get(red, "dog")
             if not res then
                 ngx.say("failed to get dog: ", err)
                 return
@@ -208,12 +203,12 @@ flushall: OK
 
             ngx.say("dog: ", res)
 
-            red:init_pipeline()
-            red:set("cat", "Marry")
-            red:set("horse", "Bob")
-            red:get("cat")
-            red:get("horse")
-            local results, err = red:commit_pipeline()
+            local pipeline = redis.init_pipeline(red)
+            pipeline:set("cat", "Marry")
+            pipeline:set("horse", "Bob")
+            pipeline:get("cat")
+            pipeline:get("horse")
+            local results, err = pipeline:commit_pipeline()
             if not results then
                 ngx.say("failed to commit the pipelined requests: ", err)
                 return
@@ -234,7 +229,7 @@ flushall: OK
 
             -- put it into the connection pool of size 100,
             -- with 0 idle timeout
-            local ok, err = red:set_keepalive(0, 100)
+            local ok, err = red:setkeepalive(0, 100)
             if not ok then
                 ngx.say("failed to set keepalive: ", err)
                 return
@@ -268,28 +263,27 @@ cmd 4: Bob
     location /test {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", 6379)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            local res, err = red:del("dog")
+            red:settimeout(1000) -- 1 sec
+
+            local res, err = redis.del(red, "dog")
             if not res then
                 ngx.say("failed to del dog: ", err)
                 return
             end
 
-            red:init_pipeline()
-            red:hkeys("dog")
-            red:set("dog", "an animal")
-            red:hkeys("dog")
-            red:get("dog")
-            local results, err = red:commit_pipeline()
+            local pipeline = redis.init_pipeline(red)
+            pipeline:hkeys("dog")
+            pipeline:set("dog", "an animal")
+            pipeline:hkeys("dog")
+            pipeline:get("dog")
+            local results, err = pipeline:commit_pipeline()
             if not results then
                 ngx.say("failed to commit the pipelined requests: ", err)
                 return
@@ -310,7 +304,7 @@ cmd 4: Bob
 
             -- put it into the connection pool of size 100,
             -- with 0 idle timeout
-            local ok, err = red:set_keepalive(0, 100)
+            local ok, err = red:setkeepalive(0, 100)
             if not ok then
                 ngx.say("failed to set keepalive: ", err)
                 return

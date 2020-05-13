@@ -1,10 +1,12 @@
+-- New high performance static interface
+-- Copyright (C) Mathew Heard (splitice)
 -- Copyright (C) Yichun Zhang (agentzh)
 
 
 local sub = string.sub
 local byte = string.byte
-local tab_insert = table.insert
-local tab_remove = table.remove
+--local tab_insert = table.insert
+--local tab_remove = table.remove
 local tcp = ngx.socket.tcp
 local null = ngx.null
 local type = type
@@ -23,9 +25,7 @@ if not ok or type(new_tab) ~= "function" then
     new_tab = function (narr, nrec) return {} end
 end
 
-
-local _M = new_tab(0, 55)
-
+local _M = {}
 _M._VERSION = '0.28'
 
 
@@ -41,61 +41,17 @@ local common_cmds = {
     "zrange",   "zrangebyscore", "zrank",   "zadd",
     "zrem",     "zincrby",                              -- Sorted Sets
     "auth",     "eval",         "expire",   "script",
-    "sort"                                              -- Others
+    "sort",     "flushall"                              -- Others
 }
 
 
-local sub_commands = {
-    "subscribe", "psubscribe"
-}
+function _M.connect(host, port_or_opts, opts)
+    local unix
 
-
-local unsub_commands = {
-    "unsubscribe", "punsubscribe"
-}
-
-
-local mt = { __index = _M }
-
-
-function _M.new(self)
     local sock, err = tcp()
     if not sock then
         return nil, err
     end
-    return setmetatable({ _sock = sock, _subscribed = false }, mt)
-end
-
-
-function _M.set_timeout(self, timeout)
-    local sock = rawget(self, "_sock")
-    if not sock then
-        error("not initialized", 2)
-        return
-    end
-
-    sock:settimeout(timeout)
-end
-
-
-function _M.set_timeouts(self, connect_timeout, send_timeout, read_timeout)
-    local sock = rawget(self, "_sock")
-    if not sock then
-        error("not initialized", 2)
-        return
-    end
-
-    sock:settimeouts(connect_timeout, send_timeout, read_timeout)
-end
-
-
-function _M.connect(self, host, port_or_opts, opts)
-    local sock = rawget(self, "_sock")
-    if not sock then
-        return nil, "not initialized"
-    end
-
-    local unix
 
     do
         local typ = type(host)
@@ -132,12 +88,9 @@ function _M.connect(self, host, port_or_opts, opts)
                 end
             end
         end
-
     end
 
-    self._subscribed = false
-
-    local ok, err
+    local ok
 
     if unix then
         ok, err = sock:connect(host, port_or_opts)
@@ -158,49 +111,14 @@ function _M.connect(self, host, port_or_opts, opts)
         end
     end
 
-    return ok, err
+    return sock
 end
 
 
-function _M.set_keepalive(self, ...)
-    local sock = rawget(self, "_sock")
-    if not sock then
-        return nil, "not initialized"
-    end
-
-    if rawget(self, "_subscribed") then
-        return nil, "subscribed state"
-    end
-
-    return sock:setkeepalive(...)
-end
-
-
-function _M.get_reused_times(self)
-    local sock = rawget(self, "_sock")
-    if not sock then
-        return nil, "not initialized"
-    end
-
-    return sock:getreusedtimes()
-end
-
-
-local function close(self)
-    local sock = rawget(self, "_sock")
-    if not sock then
-        return nil, "not initialized"
-    end
-
-    return sock:close()
-end
-_M.close = close
-
-
-local function _read_reply(self, sock)
+local function _read_reply(sock)
     local line, err = sock:receive()
     if not line then
-        if err == "timeout" and not rawget(self, "_subscribed") then
+        if err == "timeout" then
             sock:close()
         end
         return nil, err
@@ -247,7 +165,7 @@ local function _read_reply(self, sock)
         local vals = new_tab(n, 0)
         local nvals = 0
         for i = 1, n do
-            local res, err = _read_reply(self, sock)
+            local res, err = _read_reply(sock)
             if res then
                 nvals = nvals + 1
                 vals[nvals] = res
@@ -308,27 +226,15 @@ local function _gen_req(args)
 end
 
 
-local function _check_msg(self, res)
-    return rawget(self, "_subscribed") and
-        type(res) == "table" and res[1] == "message"
-end
+--local function _check_msg(res)
+--    return type(res) == "table" and res[1] == "message"
+--end
 
 
-local function _do_cmd(self, ...)
+local function _do_cmd(sock, ...)
     local args = {...}
 
-    local sock = rawget(self, "_sock")
-    if not sock then
-        return nil, "not initialized"
-    end
-
     local req = _gen_req(args)
-
-    local reqs = rawget(self, "_reqs")
-    if reqs then
-        reqs[#reqs + 1] = req
-        return
-    end
 
     -- print("request: ", table.concat(req))
 
@@ -337,58 +243,11 @@ local function _do_cmd(self, ...)
         return nil, err
     end
 
-    local res, err = _read_reply(self, sock)
-    while _check_msg(self, res) do
-        if rawget(self, "_buffered_msg") == nil then
-            self._buffered_msg = new_tab(1, 0)
-        end
-
-        tab_insert(self._buffered_msg, res)
-        res, err = _read_reply(self, sock)
-    end
-
-    return res, err
+    return _read_reply(sock)
 end
 
-
-local function _check_subscribed(self, res)
-    if type(res) == "table"
-       and (res[1] == "unsubscribe" or res[1] == "punsubscribe")
-       and res[3] == 0
-   then
-        self._subscribed = false
-        -- FIXME: support multiple subscriptions in the next PR
-        self._buffered_msg = nil
-    end
-end
-
-
-function _M.read_reply(self)
-    local sock = rawget(self, "_sock")
-    if not sock then
-        return nil, "not initialized"
-    end
-
-    if not rawget(self, "_subscribed") then
-        return nil, "not subscribed"
-    end
-
-    local buffered_msg = rawget(self, "_buffered_msg")
-    if buffered_msg then
-        local msg = buffered_msg[1]
-        tab_remove(buffered_msg, 1)
-
-        if #buffered_msg == 0 then
-            self._buffered_msg = nil
-        end
-
-        return msg
-    end
-
-    local res, err = _read_reply(self, sock)
-    _check_subscribed(self, res)
-
-    return res, err
+function _M.read_reply(sock)
+    return _read_reply(sock)
 end
 
 
@@ -396,36 +255,12 @@ for i = 1, #common_cmds do
     local cmd = common_cmds[i]
 
     _M[cmd] =
-        function (self, ...)
-            return _do_cmd(self, cmd, ...)
+        function (sock, ...)
+            return _do_cmd(sock, cmd, ...)
         end
 end
 
-
-for i = 1, #sub_commands do
-    local cmd = sub_commands[i]
-
-    _M[cmd] =
-        function (self, ...)
-            self._subscribed = true
-            return _do_cmd(self, cmd, ...)
-        end
-end
-
-
-for i = 1, #unsub_commands do
-    local cmd = unsub_commands[i]
-
-    _M[cmd] =
-        function (self, ...)
-            local res, err = _do_cmd(self, cmd, ...)
-            _check_subscribed(self, res)
-            return res, err
-        end
-end
-
-
-function _M.hmset(self, hashname, ...)
+function _M.hmset(sock, hashname, ...)
     if select('#', ...) == 1 then
         local t = select(1, ...)
 
@@ -443,36 +278,33 @@ function _M.hmset(self, hashname, ...)
             i = i + 2
         end
         -- print("key", hashname)
-        return _do_cmd(self, "hmset", hashname, unpack(array))
+        return _do_cmd(sock, "hmset", hashname, unpack(array))
     end
 
     -- backwards compatibility
-    return _do_cmd(self, "hmset", hashname, ...)
+    return _do_cmd(sock, "hmset", hashname, ...)
+end
+
+local _P = {}
+local mt = { __index = _P }
+
+function _M.init_pipeline(sock, n)
+    return setmetatable({ _reqs = new_tab(n or 4, 0), _sock = sock }, mt)
 end
 
 
-function _M.init_pipeline(self, n)
-    self._reqs = new_tab(n or 4, 0)
-end
-
-
-function _M.cancel_pipeline(self)
-    self._reqs = nil
-end
-
-
-function _M.commit_pipeline(self)
+function _P.commit_pipeline(self)
     local reqs = rawget(self, "_reqs")
     if not reqs then
         return nil, "no pipeline"
     end
 
-    self._reqs = nil
-
     local sock = rawget(self, "_sock")
     if not sock then
-        return nil, "not initialized"
+        return nil, "no sock"
     end
+
+    self._reqs = nil
 
     local bytes, err = sock:send(reqs)
     if not bytes then
@@ -483,14 +315,14 @@ function _M.commit_pipeline(self)
     local nreqs = #reqs
     local vals = new_tab(nreqs, 0)
     for i = 1, nreqs do
-        local res, err = _read_reply(self, sock)
+        local res, err = _read_reply(sock)
         if res then
             nvals = nvals + 1
             vals[nvals] = res
 
         elseif res == nil then
             if err == "timeout" then
-                close(self)
+                sock:close()
             end
             return nil, err
 
@@ -505,7 +337,19 @@ function _M.commit_pipeline(self)
 end
 
 
-function _M.array_to_hash(self, t)
+local function _do_pipeline_cmd(self, ...)
+    local args = {...}
+
+    local req = _gen_req(args)
+
+
+    local reqs = rawget(self, "_reqs")
+    reqs[#reqs + 1] = req
+    return
+end
+
+
+function _M.array_to_hash(t)
     local n = #t
     -- print("n = ", n)
     local h = new_tab(0, n / 2)
@@ -522,8 +366,8 @@ function _M.add_commands(...)
     for i = 1, #cmds do
         local cmd = cmds[i]
         _M[cmd] =
-            function (self, ...)
-                return _do_cmd(self, cmd, ...)
+            function (sock, ...)
+                return _do_cmd(sock, cmd, ...)
             end
     end
 end
@@ -531,13 +375,25 @@ end
 
 setmetatable(_M, {__index = function(self, cmd)
     local method =
-        function (self, ...)
-            return _do_cmd(self, cmd, ...)
+        function (sock, ...)
+            return _do_cmd(sock, cmd, ...)
         end
 
     -- cache the lazily generated method in our
     -- module table
     _M[cmd] = method
+    return method
+end})
+
+setmetatable(_P, {__index = function(self, cmd)
+    local method =
+        function (self, ...)
+            return _do_pipeline_cmd(self, cmd, ...)
+        end
+
+    -- cache the lazily generated method in our
+    -- module table
+    _P[cmd] = method
     return method
 end})
 

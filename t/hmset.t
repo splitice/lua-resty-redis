@@ -30,24 +30,23 @@ __DATA__
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            local res, err = red:hmset("animals", "dog", "bark", "cat", "meow")
+            red:settimeout(1000) -- 1 sec
+
+            local res, err = redis.hmset(red, "animals", "dog", "bark", "cat", "meow")
             if not res then
                 ngx.say("failed to set animals: ", err)
                 return
             end
             ngx.say("hmset animals: ", res)
 
-            local res, err = red:hmget("animals", "dog", "cat")
+            local res, err = redis.hmget(red, "animals", "dog", "cat")
             if not res then
                 ngx.say("failed to get animals: ", err)
                 return
@@ -74,25 +73,24 @@ hmget animals: barkmeow
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
+            red:settimeout(1000) -- 1 sec
+
             local t = { dog = "bark", cat = "meow", cow = "moo" }
-            local res, err = red:hmset("animals", t)
+            local res, err = redis.hmset(red, "animals", t)
             if not res then
                 ngx.say("failed to set animals: ", err)
                 return
             end
             ngx.say("hmset animals: ", res)
 
-            local res, err = red:hmget("animals", "dog", "cat", "cow")
+            local res, err = redis.hmget(red, "animals", "dog", "cat", "cow")
             if not res then
                 ngx.say("failed to get animals: ", err)
                 return
@@ -119,24 +117,23 @@ hmget animals: barkmeowmoo
     location /t {
         content_by_lua '
             local redis = require "resty.redis"
-            local red = redis:new()
 
-            red:set_timeout(1000) -- 1 sec
-
-            local ok, err = red:connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
-            if not ok then
+            local red, err = redis.connect("127.0.0.1", $TEST_NGINX_REDIS_PORT)
+            if not red then
                 ngx.say("failed to connect: ", err)
                 return
             end
 
-            local res, err = red:hmset("animals", "cat")
+            red:settimeout(1000) -- 1 sec
+
+            local res, err = redis.hmset(red, "animals", "cat")
             if not res then
                 ngx.say("failed to set animals: ", err)
                 return
             end
             ngx.say("hmset animals: ", res)
 
-            local res, err = red:hmget("animals", "cat")
+            local res, err = redis.hmget(red, "animals", "cat")
             if not res then
                 ngx.say("failed to get animals: ", err)
                 return
