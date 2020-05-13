@@ -93,10 +93,12 @@ function _M.connect(host, port_or_opts, opts)
     local ok
 
     if unix then
+        sock:settimeout(5) -- 5ms
         ok, err = sock:connect(host, port_or_opts)
         opts = port_or_opts
 
     else
+        sock:settimeout(200) -- 200ms
         ok, err = sock:connect(host, port_or_opts, opts)
     end
 
